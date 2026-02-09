@@ -1,11 +1,41 @@
 // React component for the chat interface
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, TextField, Button, Typography, Paper, List, ListItem, ListItemText, CircularProgress } from '@mui/material';
+import {
+  Box,
+  TextField,
+  Button,
+  Typography,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  CircularProgress,
+  Alert
+} from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
-import { ChatRequest, ChatResponse, Message } from '../../types/task';
 import apiService from '../../services/api';
-import authService from '../../services/auth';
+
+interface Message {
+  id: string;
+  content: string;
+  sender_type: 'user' | 'ai';
+  timestamp: string;
+  conversation_id: string;
+  user_id: string;
+}
+
+interface ChatResponse {
+  response: string;
+  conversation_id: string;
+  tasks_updated: any[];
+  next_message_expected: boolean;
+}
+
+interface ChatRequest {
+  message: string;
+  conversation_id?: string;
+}
 
 interface ChatInterfaceProps {
   userId: string;
@@ -16,6 +46,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom of messages
@@ -32,6 +63,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userId }) => {
 
     try {
       setIsLoading(true);
+      setError(null);
 
       // Add user message to UI immediately
       const userMessage: Message = {
@@ -73,15 +105,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userId }) => {
       setMessages(prev => [...prev, aiMessage]);
 
       // Handle any updated tasks
-      if (response.tasks_updated.length > 0) {
+      if (response.tasks_updated && response.tasks_updated.length > 0) {
         // Optionally update task list in parent component
         console.log('Updated tasks:', response.tasks_updated);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error);
+      setError(error.message || 'An error occurred while sending the message');
+      
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
-        content: 'Sorry, I encountered an error processing your request. Please try again.',
+        content: error.message || 'Sorry, I encountered an error processing your request. Please try again.',
         sender_type: 'ai',
         timestamp: new Date().toISOString(),
         conversation_id: conversationId || '',
@@ -93,7 +127,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userId }) => {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -102,72 +136,137 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userId }) => {
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Paper elevation={3} sx={{ flex: 1, display: 'flex', flexDirection: 'column', mb: 2, overflow: 'hidden' }}>
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', backgroundColor: '#f5f5f5' }}>
+      <Paper
+        elevation={3}
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          borderRadius: 2
+        }}
+      >
+        <Box sx={{
+          p: 2,
+          borderBottom: 1,
+          borderColor: 'divider',
+          backgroundColor: '#f5f5f5',
+          borderRadius: '8px 8px 0 0'
+        }}>
           <Typography variant="h6">AI Task Assistant</Typography>
         </Box>
-        
-        <List sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
-          {messages.map((msg, index) => (
-            <ListItem
-              key={msg.id}
-              alignItems="flex-start"
-              sx={{
-                justifyContent: msg.sender_type === 'user' ? 'flex-end' : 'flex-start',
-                mb: 1
-              }}
-            >
-              <Paper
-                sx={{
-                  maxWidth: '70%',
-                  p: 1.5,
-                  borderRadius: msg.sender_type === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                  backgroundColor: msg.sender_type === 'user' ? '#e3f2fd' : '#f5f5f5',
-                  alignSelf: msg.sender_type === 'user' ? 'flex-end' : 'flex-start'
-                }}
-              >
-                <ListItemText
-                  primary={msg.content}
-                  secondary={
-                    <Typography
-                      sx={{ display: 'inline' }}
-                      component="span"
-                      variant="caption"
-                      color="text.primary"
+
+        <List
+          sx={{
+            flex: 1,
+            overflowY: 'auto',
+            p: 2,
+            bgcolor: '#fafafa'
+          }}
+        >
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          
+          {messages.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+              <Typography variant="h6" gutterBottom>
+                Welcome to your AI Task Assistant!
+              </Typography>
+              <Typography variant="body2">
+                You can manage your tasks using natural language. Try commands like:
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                "Add a task to buy groceries"
+              </Typography>
+              <Typography variant="body2">
+                "Show me my tasks"
+              </Typography>
+              <Typography variant="body2">
+                "Mark the grocery task as complete"
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              {messages.map((msg) => (
+                <React.Fragment key={msg.id}>
+                  <ListItem
+                    alignItems="flex-start"
+                    sx={{
+                      justifyContent: msg.sender_type === 'user' ? 'flex-end' : 'flex-start',
+                      py: 1
+                    }}
+                  >
+                    <Paper
+                      sx={{
+                        maxWidth: '75%',
+                        p: 1.5,
+                        borderRadius: msg.sender_type === 'user'
+                          ? '18px 18px 4px 18px'
+                          : '18px 18px 18px 4px',
+                        backgroundColor: msg.sender_type === 'user'
+                          ? '#e3f2fd'
+                          : '#ffffff',
+                        boxShadow: 1
+                      }}
                     >
-                      {msg.sender_type === 'user' ? 'You' : 'Assistant'} • {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Typography>
-                  }
-                />
-              </Paper>
-            </ListItem>
-          ))}
-          {isLoading && (
-            <ListItem alignItems="flex-start" sx={{ justifyContent: 'flex-start', mb: 1 }}>
-              <Paper
-                sx={{
-                  maxWidth: '70%',
-                  p: 1.5,
-                  borderRadius: '20px 20px 20px 4px',
-                  backgroundColor: '#f5f5f5',
-                  alignSelf: 'flex-start'
-                }}
-              >
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <CircularProgress size={20} sx={{ mr: 1 }} />
-                      Thinking...
-                    </Box>
-                  }
-                />
-              </Paper>
-            </ListItem>
+                      <ListItemText
+                        primary={msg.content}
+                        secondary={
+                          <Typography
+                            sx={{ display: 'inline' }}
+                            component="span"
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            {msg.sender_type === 'user' ? 'You' : 'Assistant'} •{' '}
+                            {new Date(msg.timestamp).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </Typography>
+                        }
+                      />
+                    </Paper>
+                  </ListItem>
+                </React.Fragment>
+              ))}
+              {isLoading && (
+                <ListItem
+                  alignItems="flex-start"
+                  sx={{
+                    justifyContent: 'flex-start',
+                    py: 1
+                  }}
+                >
+                  <Paper
+                    sx={{
+                      maxWidth: '75%',
+                      p: 1.5,
+                      borderRadius: '18px 18px 18px 4px',
+                      backgroundColor: '#ffffff',
+                      boxShadow: 1
+                    }}
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <CircularProgress size={16} sx={{ mr: 1 }} />
+                          <Typography variant="body2">Thinking...</Typography>
+                        </Box>
+                      }
+                    />
+                  </Paper>
+                </ListItem>
+              )}
+            </>
           )}
           <div ref={messagesEndRef} />
         </List>
-        
-        <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+
+        <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <TextField
               fullWidth
@@ -177,8 +276,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userId }) => {
               placeholder="Ask me to add, list, complete, or manage your tasks..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               disabled={isLoading}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                }
+              }}
             />
             <Button
               variant="contained"
@@ -186,7 +290,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userId }) => {
               onClick={handleSendMessage}
               disabled={isLoading || !inputMessage.trim()}
               endIcon={<SendIcon />}
-              sx={{ height: 'fit-content' }}
+              sx={{
+                height: 'fit-content',
+                alignSelf: 'flex-end',
+                borderRadius: 2,
+                px: 3
+              }}
             >
               Send
             </Button>

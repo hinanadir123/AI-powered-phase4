@@ -1,24 +1,16 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'next/navigation';
 
 export default function Home() {
-  const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading) {
-      if (user) {
-        // If user is authenticated, redirect to dashboard
-        router.push('/dashboard');
-      } else {
-        // If not authenticated, redirect to landing page
-        router.push('/landing');
-      }
-    }
-  }, [user, loading, router]);
+    // For now, we'll redirect to the dashboard directly
+    // In a real app, you would check authentication status and redirect accordingly
+    router.push('/dashboard');
+  }, [router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-950">

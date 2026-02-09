@@ -1,7 +1,8 @@
 // API service for the Todo AI Chatbot frontend
 
-import axios, { AxiosInstance } from 'axios';
-import { ChatRequest, ChatResponse, Task, User } from '../types/task';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import { Task } from '../types/task';
+import authService from './auth';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -10,14 +11,14 @@ class ApiService {
 
   constructor() {
     this.apiClient = axios.create({
-      baseURL: BACKEND_URL,
-      timeout: 10000, // 10 seconds timeout
+      baseURL: `${BACKEND_URL}/api`,
+      timeout: 15000, // 15 seconds timeout
     });
 
     // Add request interceptor to include auth token
     this.apiClient.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem('access_token');
+        const token = authService.getToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -36,7 +37,7 @@ class ApiService {
       (error) => {
         if (error.response?.status === 401) {
           // Token might be expired, redirect to login
-          localStorage.removeItem('access_token');
+          authService.logout();
           window.location.href = '/login';
         }
         return Promise.reject(error);
@@ -45,9 +46,9 @@ class ApiService {
   }
 
   // Chat API methods
-  async sendMessage(userId: string, request: ChatRequest): Promise<ChatResponse> {
+  async sendMessage(userId: string, request: any): Promise<any> {
     try {
-      const response = await this.apiClient.post<ChatResponse>(`/api/${userId}/chat`, request);
+      const response: AxiosResponse = await this.apiClient.post(`/${userId}/chat`, request);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -57,7 +58,7 @@ class ApiService {
   // Task API methods
   async getTasks(userId: string): Promise<Task[]> {
     try {
-      const response = await this.apiClient.get<{ tasks: Task[] }>(`/api/${userId}/tasks`);
+      const response: AxiosResponse<{ tasks: Task[] }> = await this.apiClient.get(`/${userId}/tasks`);
       return response.data.tasks;
     } catch (error) {
       throw this.handleError(error);
@@ -66,7 +67,7 @@ class ApiService {
 
   async createTask(userId: string, taskData: Partial<Task>): Promise<Task> {
     try {
-      const response = await this.apiClient.post<Task>(`/api/${userId}/tasks`, taskData);
+      const response: AxiosResponse<Task> = await this.apiClient.post(`/${userId}/tasks`, taskData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -75,7 +76,7 @@ class ApiService {
 
   async updateTask(userId: string, taskId: string, taskData: Partial<Task>): Promise<Task> {
     try {
-      const response = await this.apiClient.put<Task>(`/api/${userId}/tasks/${taskId}`, taskData);
+      const response: AxiosResponse<Task> = await this.apiClient.put(`/${userId}/tasks/${taskId}`, taskData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -84,7 +85,7 @@ class ApiService {
 
   async deleteTask(userId: string, taskId: string): Promise<boolean> {
     try {
-      await this.apiClient.delete(`/api/${userId}/tasks/${taskId}`);
+      await this.apiClient.delete(`/${userId}/tasks/${taskId}`);
       return true;
     } catch (error) {
       throw this.handleError(error);
@@ -93,17 +94,7 @@ class ApiService {
 
   async completeTask(userId: string, taskId: string): Promise<Task> {
     try {
-      const response = await this.apiClient.post<Task>(`/api/${userId}/tasks/${taskId}/complete`);
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  // User API methods
-  async getCurrentUser(): Promise<User> {
-    try {
-      const response = await this.apiClient.get<User>('/auth/me');
+      const response: AxiosResponse<Task> = await this.apiClient.post(`/${userId}/tasks/${taskId}/complete`);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -116,7 +107,8 @@ class ApiService {
       if (error.response) {
         // Server responded with error status
         const { data, status } = error.response;
-        return new Error(`API Error: ${status} - ${data.message || data.detail || 'Unknown error'}`);
+        const message = data?.message || data?.detail || data?.error || 'Unknown error';
+        return new Error(`API Error: ${status} - ${message}`);
       } else if (error.request) {
         // Request made but no response received
         return new Error('Network Error: No response received from server');

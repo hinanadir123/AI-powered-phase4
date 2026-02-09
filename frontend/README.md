@@ -1,13 +1,22 @@
-# Todo AI Chatbot - Frontend
+# AI-Powered Conversational Todo Manager - Frontend
 
-Frontend for the AI-powered conversational todo manager. Built with Next.js and ChatKit.
+This is the frontend for the AI-Powered Conversational Todo Manager. It provides a chat interface for managing tasks through natural language commands.
 
 ## Features
-- Conversational task management interface
+
+- Conversational task management interface using natural language
 - Real-time chat with AI assistant
-- Task display and management
-- User authentication
-- Responsive design
+- Task listing and management
+- User authentication and session handling
+- Responsive design for desktop and mobile
+
+## Tech Stack
+
+- Next.js 14 (App Router)
+- React 18
+- TypeScript
+- Material UI (MUI) for components
+- Axios for API requests
 
 ## Setup
 
@@ -19,8 +28,7 @@ npm install
 2. Set up environment variables in `.env.local`:
 ```env
 NEXT_PUBLIC_BACKEND_URL="http://localhost:8000"
-NEXT_PUBLIC_MCP_SERVER_URL="http://localhost:8000"
-NEXT_PUBLIC_OPENAI_API_KEY="your-openai-api-key"
+NEXT_PUBLIC_CHAT_API_URL="http://localhost:8000/api"
 ```
 
 3. Start the development server:
@@ -28,4 +36,30 @@ NEXT_PUBLIC_OPENAI_API_KEY="your-openai-api-key"
 npm run dev
 ```
 
-Visit `http://localhost:3000` to view the application.
+The application will be available at `http://localhost:3000`
+
+## Project Structure
+
+- `app/` - Next.js 14 App Router pages
+- `src/components/` - Reusable UI components (ChatInterface, TaskList, etc.)
+- `src/services/` - API and authentication services
+- `src/types/` - TypeScript type definitions
+- `src/utils/` - Utility functions
+
+## Key Components
+
+- `ChatInterface` - Main chat interface for conversational task management
+- `TaskList` - Component for displaying and managing tasks
+- `AuthContext` - Authentication context for user management
+
+## API Integration
+
+The frontend communicates with the backend API at the configured `NEXT_PUBLIC_BACKEND_URL`. Key endpoints include:
+
+- `/api/{user_id}/chat` - Chat endpoint for conversational task management
+- `/api/{user_id}/tasks` - Task management endpoints
+- `/auth` - Authentication endpoints
+
+## Running with the Backend
+
+For full functionality, this frontend needs to run alongside the backend server. Make sure the backend is running on the configured port before starting the frontend.
