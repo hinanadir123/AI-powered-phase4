@@ -6,7 +6,7 @@ import { Box, Container, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 
 // Dynamically import the ChatInterface component to avoid SSR issues
-const ChatInterface = dynamic(() => import('../src/components/ChatInterface/ChatInterface'), {
+const ChatInterface = dynamic(() => import('../../src/components/ChatInterface/ChatInterface'), {
   ssr: false,
   loading: () => <div>Loading chat interface...</div>
 });

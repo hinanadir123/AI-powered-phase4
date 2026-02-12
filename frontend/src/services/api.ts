@@ -74,7 +74,7 @@ class ApiService {
     }
   }
 
-  async updateTask(userId: string, taskId: string, taskData: Partial<Task>): Promise<Task> {
+  async updateTask(userId: string, taskId: number, taskData: Partial<Task>): Promise<Task> {
     try {
       const response: AxiosResponse<Task> = await this.apiClient.put(`/${userId}/tasks/${taskId}`, taskData);
       return response.data;
@@ -83,7 +83,7 @@ class ApiService {
     }
   }
 
-  async deleteTask(userId: string, taskId: string): Promise<boolean> {
+  async deleteTask(userId: string, taskId: number): Promise<boolean> {
     try {
       await this.apiClient.delete(`/${userId}/tasks/${taskId}`);
       return true;
@@ -92,7 +92,7 @@ class ApiService {
     }
   }
 
-  async completeTask(userId: string, taskId: string): Promise<Task> {
+  async completeTask(userId: string, taskId: number): Promise<Task> {
     try {
       const response: AxiosResponse<Task> = await this.apiClient.post(`/${userId}/tasks/${taskId}/complete`);
       return response.data;

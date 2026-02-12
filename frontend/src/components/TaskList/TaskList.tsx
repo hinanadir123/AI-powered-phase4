@@ -50,7 +50,7 @@ const TaskList: React.FC<TaskListProps> = ({ userId }) => {
 
   const handleToggleTask = async (task: Task) => {
     try {
-      if (task.status === 'pending') {
+      if (!task.completed) {
         // Complete the task
         const updatedTask = await apiService.completeTask(userId, task.id);
         setTasks(prevTasks => prevTasks.map(t => t.id === task.id ? updatedTask : t));
@@ -65,7 +65,7 @@ const TaskList: React.FC<TaskListProps> = ({ userId }) => {
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
+  const handleDeleteTask = async (taskId: number) => {
     try {
       await apiService.deleteTask(userId, taskId);
       // Remove the task from the UI
@@ -95,8 +95,8 @@ const TaskList: React.FC<TaskListProps> = ({ userId }) => {
   }
 
   // Group tasks by status
-  const pendingTasks = tasks.filter(task => task.status === 'pending');
-  const completedTasks = tasks.filter(task => task.status === 'completed');
+  const pendingTasks = tasks.filter(task => !task.completed);
+  const completedTasks = tasks.filter(task => task.completed);
 
   return (
     <Box sx={{ width: '100%', height: '100%', overflow: 'auto', p: 1 }}>

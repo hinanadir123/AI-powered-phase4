@@ -1,148 +1,323 @@
-# Todo AI Chatbot - Phase III: AI-Powered Conversational Todo Manager
+# Todo AI Chatbot - Phase 4: Kubernetes Deployment
 
-Welcome to the Todo AI Chatbot project, Phase III - AI-Powered Conversational Todo Manager. This application allows users to manage their tasks through natural language conversations with an AI assistant.
+An AI-powered task management application with natural language processing capabilities, deployed on Kubernetes using Minikube and Helm.
 
 ## Overview
 
-This project implements an AI-powered conversational interface for task management. Users can interact with the system using natural language to add, update, complete, and delete tasks. The system leverages MCP tools and OpenAI Agents SDK to interpret user intents and execute appropriate actions.
+This project is a full-stack application that allows users to manage tasks through a conversational AI interface. Phase 4 focuses on containerization and Kubernetes deployment.
 
-## Architecture
-
-The application follows a microservice architecture with:
-
-- **Frontend**: Next.js application with a chat interface built using Material UI
-- **Backend**: FastAPI server with MCP tools for task operations
-- **Database**: PostgreSQL database for persistent storage
-- **AI Agent**: Natural language processing using OpenAI API
-- **Authentication**: JWT-based authentication with user isolation
+**Key Components:**
+- **Frontend**: Next.js 14 application with Material-UI components
+- **Backend**: FastAPI application with AI-powered task management
+- **Database**: PostgreSQL for data persistence
+- **Deployment**: Kubernetes (Minikube) with Helm charts
 
 ## Features
 
-- Natural language task management (add, list, complete, delete, update)
-- Conversational AI assistant
-- Persistent conversation history
-- Secure authentication and user isolation
-- MCP-first architecture for standardized tool integration
-- Responsive web interface
+- 🤖 AI-powered task creation and management through natural language
+- 💬 Interactive chat interface for task operations
+- ✅ Task completion tracking
+- 🔐 User authentication and authorization
+- 📱 Responsive web interface
+- ☸️ Containerized deployment with Kubernetes
+- 📦 Helm charts for easy deployment management
+
+## Technology Stack
+
+### Frontend
+- Next.js 14
+- React 18
+- TypeScript
+- Material-UI (MUI)
+- Axios for API calls
+
+### Backend
+- FastAPI
+- Python 3.11
+- SQLModel (SQLAlchemy + Pydantic)
+- PostgreSQL
+- OpenAI/Anthropic API integration
+- JWT authentication
+
+### DevOps
+- Docker
+- Kubernetes (Minikube)
+- Helm 3
+- PostgreSQL 15
+
+## Quick Start
+
+### Prerequisites
+
+- Docker Desktop
+- Minikube
+- Helm 3.x
+- kubectl
+- 4GB+ RAM available for Minikube
+
+### Deployment
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
+**Quick deployment:**
+
+```bash
+# 1. Build Docker images
+cd backend && docker build -t todo-backend:latest .
+cd ../frontend && docker build -t todo-frontend:latest .
+
+# 2. Start Minikube
+minikube start
+
+# 3. Load images into Minikube
+minikube image load todo-backend:latest
+minikube image load todo-frontend:latest
+
+# 4. Deploy PostgreSQL
+kubectl apply -f helm/postgres.yaml
+kubectl wait --for=condition=ready pod -l app=postgres --timeout=60s
+
+# 5. Deploy backend and frontend
+helm install todo-backend helm/todo-backend
+helm install todo-frontend helm/todo-frontend
+
+# 6. Access services
+minikube service todo-frontend --url
+minikube service todo-backend --url
+```
 
 ## Project Structure
 
 ```
-├── backend/              # FastAPI backend server
+phase-4/
+├── backend/                 # FastAPI backend application
+│   ── routes/             # API route handlers
+│   ├── models/             # Database models
+│   ├── schemas.py          # Pydantic schemas
+│   ├── dependencies.py     # JWT authentication
+│   ├── main.py             # Application entry point
+│   ├── Dockerfile          # Backend container image
+│   └── requirements.txt    # Python dependencies
+│
+├── frontend/               # Next.js frontend application
+│   ├── app/               # Next.js app directory
 │   ├── src/
-│   │   ├── models/       # Data models (User, Task, Conversation, Message)
-│   │   ├── services/     # Business logic (TaskService, MCP tools)
-│   │   ├── api/          # API routes and middleware
-│   │   ├── core/         # Core utilities (database, config, security)
-│   │   ├── ai/           # AI agent implementation
-│   │   └── utils/        # Utility functions
-│   └── requirements.txt  # Python dependencies
-├── frontend/             # Next.js frontend application
-│   ├── app/              # Next.js 14 App Router pages
-│   ├── src/
-│   │   ├── components/   # UI components (ChatInterface, TaskList)
-│   │   ├── services/     # API and authentication services
-│   │   ├── types/        # TypeScript type definitions
-│   │   └── utils/        # Utility functions
-│   └── package.json      # Node.js dependencies
-└── specs/                # Project specifications and plans
-    └── 002-ai-todo-chatbot/
-        ├── spec.md       # Feature specification
-        ├── plan.md       # Implementation plan
-        └── tasks.md      # Task breakdown
+│   │   ├── components/    # React components
+│   │   ├── services/      # API service layer
+│   │   └── types/         # TypeScript type definitions
+│   ├── Dockerfile         # Frontend container image
+│   └── package.json       # Node.js dependencies
+│
+├── helm/                   # Kubernetes Helm charts
+│   ├── postgres.yaml      # PostgreSQL deployment
+│   ├── todo-backend/      # Backend Helm chart
+│   │   ├── Chart.yaml
+│   │   ├── values.yaml
+│   │   └── templates/
+│   └── todo-frontend/     # Frontend Helm chart
+│       ├── Chart.yaml
+│       ├── values.yaml
+│       └── templates/
+│
+├── DEPLOYMENT.md          # Detailed deployment guide
+└── README.md              # This file
 ```
 
-## Setup Instructions
+## Configuration
 
-### Backend Setup
+### Backend Configuration
 
-1. Navigate to the backend directory:
+Edit `helm/todo-backend/values.yaml`:
+
+```yaml
+env:
+  DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/todo_db"
+  ANTHROPIC_API_KEY: ""  # Add your API key here
+  CORS_ORIGINS: "http://localhost:3000,http://localhost:30300"
+```
+
+### Frontend Configuration
+
+Edit `helm/todo-frontend/values.yaml`:
+
+```yaml
+env:
+  NEXT_PUBLIC_BACKEND_URL: "http://localhost:30800"
+  NEXT_PUBLIC_BACKEND_API_URL: "http://localhost:30800/api"
+```
+
+## Accessing the Application
+
+After deployment, use Minikube service tunnels to access the application:
+
+```bash
+# Frontend (keep terminal open)
+minikube service todo-frontend --url
+# Output: http://127.0.0.1:xxxxx
+
+# Backend (in another terminal)
+minikube service todo-backend --url
+# Output: http://127.0.0.1:xxxxx
+```
+
+Open the frontend URL in your browser to use the application.
+
+## API Endpoints
+
+### Backend API
+
+- `GET /health` - Health check endpoint
+- `POST /api/{user_id}/chat` - Send chat message
+- `GET /api/{user_id}/tasks` - Get user tasks
+- `POST /api/{user_id}/tasks` - Create new task
+- `PUT /api/{user_id}/tasks/{task_id}` - Update task
+- `DELETE /api/{user_id}/tasks/{task_id}` - Delete task
+- `POST /api/{user_id}/tasks/{task_id}/complete` - Mark task as complete
+
+## Monitoring
+
+View application logs:
+
+```bash
+# Backend logs
+kubectl logs -l app=todo-backend -f
+
+# Frontend logs
+kubectl logs -l app=todo-frontend -f
+
+# Database logs
+kubectl logs -l app=postgres -f
+```
+
+Check pod status:
+
+```bash
+kubectl get pods,svc
+```
+
+## Troubleshooting
+
+Common issues and solutions are documented in [DEPLOYMENT.md](./DEPLOYMENT.md#troubleshooting).
+
+**Quick fixes:**
+
+- **Backend crashes**: Check logs with `kubectl logs -l app=todo-backend`, verify dependencies
+- **Frontend not loading**: Verify backend URL configuration in values.yaml
+- **Database connection issues**: Ensure PostgreSQL pod is running
+- **Service not accessible**: Use `minikube service <name> --url` to create tunnels
+
+## Updating Deployments
+
+### Update Backend
+
 ```bash
 cd backend
+docker build -t todo-backend:latest .
+minikube image rm docker.io/library/todo-backend:latest
+minikube image load todo-backend:latest
+kubectl rollout restart deployment/todo-backend
 ```
 
-2. Install Python dependencies:
-```bash
-pip install -r requirements.txt
-```
+### Update Frontend
 
-3. Set up environment variables in `.env`:
-```env
-DATABASE_URL="postgresql://username:password@localhost:5432/todo_db"
-OPENAI_API_KEY="your-openai-api-key"
-MCP_SERVER_URL="http://localhost:8000"
-SECRET_KEY="your-secret-key"
-ALGORITHM="HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-```
-
-4. Run database migrations:
-```bash
-python -m src.core.database init-db
-```
-
-5. Start the backend server:
-```bash
-uvicorn src.main:app --reload --port 8000
-```
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
 ```bash
 cd frontend
+docker build -t todo-frontend:latest .
+minikube image rm docker.io/library/todo-frontend:latest
+minikube image load todo-frontend:latest
+kubectl rollout restart deployment/todo-frontend
 ```
 
-2. Install JavaScript dependencies:
+## Cleanup
+
 ```bash
-npm install
+# Uninstall Helm releases
+helm uninstall todo-backend
+helm uninstall todo-frontend
+
+# Delete PostgreSQL
+kubectl delete -f helm/postgres.yaml
+
+# Stop Minikube
+minikube stop
+
+# Delete Minikube cluster (optional)
+minikube delete
 ```
-
-3. Set up environment variables in `.env.local`:
-```env
-NEXT_PUBLIC_BACKEND_URL="http://localhost:8000"
-NEXT_PUBLIC_CHAT_API_URL="http://localhost:8000/api"
-```
-
-4. Start the frontend development server:
-```bash
-npm run dev
-```
-
-Visit `http://localhost:3000` to access the application.
-
-## Usage
-
-1. Register a new account or sign in with an existing account
-2. Navigate to the dashboard to access the chat interface
-3. Interact with the AI assistant using natural language:
-   - "Add a task: Buy groceries"
-   - "What are my tasks?"
-   - "Mark the grocery task as complete"
-   - "Update my meeting time to 3 PM"
 
 ## Development
 
-### Backend Development
-- Models are located in `src/models/`
-- Services are in `src/services/`
-- API routes are in `src/api/routes/`
-- AI agent logic is in `src/ai/agent.py`
+### Local Backend Development
 
-### Frontend Development
-- Pages are in `app/` (Next.js App Router)
-- Components are in `src/components/`
-- API services are in `src/services/`
-- Type definitions are in `src/types/`
-
-## Testing
-
-Run backend tests:
 ```bash
-pytest
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 ```
 
-Run frontend tests:
+### Local Frontend Development
+
 ```bash
-npm run test
+cd frontend
+npm install
+npm run dev
 ```
+
+## Security Considerations
+
+⚠️ **Important**: This deployment is configured for local development. For production:
+
+1. Store secrets in Kubernetes Secrets or external secret managers
+2. Use TLS/SSL certificates for HTTPS
+3. Implement proper network policies
+4. Use private container registries
+5. Enable RBAC and pod security policies
+6. Regular security updates and vulnerability scanning
+
+## Architecture Decisions
+
+### Why Minikube?
+
+Minikube provides a local Kubernetes environment that closely mimics production clusters, making it ideal for development and testing.
+
+### Why Helm?
+
+Helm simplifies Kubernetes deployments by:
+- Templating Kubernetes manifests
+- Managing application versions
+- Simplifying updates and rollbacks
+- Providing a package management system
+
+### Why NodePort Services?
+
+For local development with Minikube, NodePort services provide easy access without requiring ingress controllers.
+
+## Phase 4 Completion
+
+✅ **All deployment tasks completed successfully:**
+
+1. ✅ Setup Phase 4 Project Structure
+2. ✅ Initialize Minikube and Verify Prerequisites
+3. ✅ Containerize Backend Service with Docker
+4. ✅ Containerize Frontend Service with Docker
+5. ✅ Generate Helm Chart for Backend Service
+6. ✅ Generate Helm Chart for Frontend Service
+7. ✅ Deploy Application to Minikube
+8. ✅ Validate Deployment and Test Functionality
+9. ✅ Troubleshoot and Optimize Deployment
+10. ✅ Document Deployment Process and Create README
+
+## Support
+
+For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+For issues or questions:
+- Check the troubleshooting section in DEPLOYMENT.md
+- Review application logs using kubectl
+- Verify all prerequisites are installed correctly
+
+---
+
+**Built with Claude Code** | **Hackathon Phase 4 Submission**

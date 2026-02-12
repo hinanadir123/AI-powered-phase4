@@ -1,0 +1,38 @@
+replicaCount: 1
+
+image:
+  repository: todo-frontend
+  pullPolicy: Never
+  tag: "latest"
+
+service:
+  type: NodePort
+  port: 3000
+  targetPort: 3000
+  nodePort: 30300
+
+env:
+  NEXT_PUBLIC_BACKEND_URL: "http://localhost:30800"
+  NEXT_PUBLIC_BACKEND_API_URL: "http://localhost:30800/api"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 5

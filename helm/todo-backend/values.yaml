@@ -1,0 +1,39 @@
+replicaCount: 1
+
+image:
+  repository: todo-backend
+  pullPolicy: Never
+  tag: "latest"
+
+service:
+  type: NodePort
+  port: 8000
+  targetPort: 8000
+  nodePort: 30800
+
+env:
+  DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/todo_db"
+  ANTHROPIC_API_KEY: ""
+  CORS_ORIGINS: "http://localhost:3000,http://localhost:30300"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 5

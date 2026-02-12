@@ -19,14 +19,8 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
-      if (success) {
-        // Redirect to the dashboard
-        router.push('/');
-        router.refresh(); // Refresh to update the UI based on auth state
-      } else {
-        setError('Invalid email or password');
-      }
+      await login(email, password);
+      // Login successful - navigation is handled by AuthContext
     } catch (err) {
       setError('An error occurred during login');
       console.error(err);

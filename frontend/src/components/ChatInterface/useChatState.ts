@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Message } from '../types/task';
+import { Message } from '../../types/task';
 
 interface ChatState {
   messages: Message[];

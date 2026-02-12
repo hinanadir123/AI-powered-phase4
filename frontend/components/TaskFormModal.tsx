@@ -39,8 +39,7 @@ const TaskFormModal = ({ userId, isOpen, onClose, onTaskCreated }: TaskFormModal
       // Call the API to create the task
       await taskApi.createTask(userId, {
         title,
-        description,
-        completed: false
+        description
       });
 
       // Reset form

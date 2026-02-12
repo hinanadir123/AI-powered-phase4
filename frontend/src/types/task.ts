@@ -9,14 +9,13 @@ export interface User {
 }
 
 export interface Task {
-  id: string;
+  id: number;
+  user_id: string;
   title: string;
   description?: string;
-  status: 'pending' | 'completed';
+  completed: boolean;
   created_at: string;
-  completed_at?: string;
-  user_id: string;
-  conversation_id?: string;
+  updated_at: string;
 }
 
 export interface Message {

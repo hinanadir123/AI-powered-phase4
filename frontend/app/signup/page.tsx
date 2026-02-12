@@ -33,14 +33,8 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
-      const success = await register(name, email, password);
-      if (success) {
-        // Redirect to the dashboard after successful registration and login
-        router.push('/');
-        router.refresh(); // Refresh to update the UI based on auth state
-      } else {
-        setError('Registration failed');
-      }
+      await register(email, password, name);
+      // Registration successful - navigation is handled by AuthContext
     } catch (err) {
       setError('An error occurred during registration');
       console.error(err);
