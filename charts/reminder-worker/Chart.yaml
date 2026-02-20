@@ -1,0 +1,12 @@
+apiVersion: v2
+name: reminder-worker
+description: A Helm chart for the reminder worker service in the Todo AI Chatbot application
+type: application
+version: 0.1.0
+appVersion: "2.0.0"
+
+# Dependencies required by this chart
+dependencies:
+  - name: common
+    repository: https://library-charts.k8s-at-home.com
+    version: 4.5.2

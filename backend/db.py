@@ -35,7 +35,7 @@ def get_session():
 def create_db_and_tables():
     try:
         # Import models here to avoid circular imports
-        from models import User, Task
+        from models import User, Task, Tag, TaskTag
         from sqlmodel import SQLModel
         print("Creating database tables...")
         SQLModel.metadata.create_all(engine)

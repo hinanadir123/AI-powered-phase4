@@ -56,10 +56,40 @@ class ApiService {
   }
 
   // Task API methods
-  async getTasks(userId: string): Promise<Task[]> {
+  async getTasks(
+    userId: string,
+    params?: {
+      status?: string;
+      priority?: string;
+      tags?: string;
+      search?: string;
+      due_from?: string;
+      due_to?: string;
+      sort?: string;
+    }
+  ): Promise<Task[]> {
     try {
-      const response: AxiosResponse<{ tasks: Task[] }> = await this.apiClient.get(`/${userId}/tasks`);
-      return response.data.tasks;
+      const queryParams = new URLSearchParams();
+      if (params?.status) queryParams.append('status_param', params.status);
+      if (params?.priority) queryParams.append('priority', params.priority);
+      if (params?.tags) queryParams.append('tags', params.tags);
+      if (params?.search) queryParams.append('search', params.search);
+      if (params?.due_from) queryParams.append('due_from', params.due_from);
+      if (params?.due_to) queryParams.append('due_to', params.due_to);
+      if (params?.sort) queryParams.append('sort', params.sort);
+
+      const url = `/${userId}/tasks${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const response: AxiosResponse<Task[]> = await this.apiClient.get(url);
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async getTags(userId: string): Promise<Array<{ id: number; name: string }>> {
+    try {
+      const response = await this.apiClient.get(`/${userId}/tags`);
+      return response.data;
     } catch (error) {
       throw this.handleError(error);
     }

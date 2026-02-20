@@ -1,0 +1,94 @@
+# Default values for reminder-worker chart
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: todo-app-worker
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: "reminder-worker"
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080 # Standard port for Python apps
+
+podSecurityContext:
+  {}
+  # fsGroup: 2000
+
+securityContext:
+  {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Service Account configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Environment variables
+env:
+  - name: DATABASE_URL
+    valueFrom:
+      secretKeyRef:
+        name: postgres-secrets
+        key: connectionString
+  - name: PYTHONUNBUFFERED
+    value: "1"
+
+# Dapr sidecar configuration
+dapr:
+  enabled: true
+  appId: "reminder-worker"
+  appPort: 8080  # Standard Python port
+  appProtocol: "http"
+  logLevel: "info"
+  config: "dapr-config"
+  annotations:
+    dapr.io/enabled: "true"
+    dapr.io/app-id: "reminder-worker"
+    dapr.io/app-port: "8080"
+    dapr.io/app-protocol: "http"
+    dapr.io/log-level: "info"
+    dapr.io/config: "dapr-config"
+    # Allow all Dapr components for the worker
+    dapr.io/allowed-inbound-ports: ""
+    dapr.io/allowed-outbound-ports: "8080"

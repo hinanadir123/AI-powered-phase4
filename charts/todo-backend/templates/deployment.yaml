@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    app: {{ .Chart.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Chart.Name }}
+      annotations:
+        # Dapr annotations for sidecar injection
+        dapr.io/enabled: "{{ .Values.dapr.enabled }}"
+        dapr.io/app-id: "{{ .Values.dapr.appId }}"
+        dapr.io/app-port: "{{ .Values.dapr.appPort }}"
+        dapr.io/app-protocol: "{{ .Values.dapr.appProtocol }}"
+        dapr.io/log-level: "{{ .Values.dapr.logLevel }}"
+        dapr.io/sidecar-cpu-limit: "{{ .Values.dapr.sidecarCpuLimit }}"
+        dapr.io/sidecar-memory-limit: "{{ .Values.dapr.sidecarMemoryLimit }}"
+    spec:
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.database.secretName }}
+              key: connection-string
+        - name: DAPR_ENABLED
+          value: "{{ .Values.dapr.enabled }}"
+        - name: DAPR_HTTP_PORT
+          value: "{{ .Values.dapr.httpPort }}"
+        - name: DAPR_GRPC_PORT
+          value: "{{ .Values.dapr.grpcPort }}"
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5

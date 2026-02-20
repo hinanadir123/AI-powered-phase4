@@ -1,0 +1,89 @@
+# Task: T5.4.2, T5.4.3 - Test Dependencies
+# Spec Reference: phase5-spec.md Section 8 (Timeline & Task Breakdown)
+# Constitution: constitution.md v5.0 Section 10 (Validation Criteria)
+#
+# Python dependencies for integration and E2E tests.
+# Install with: pip install -r requirements-test.txt
+#
+# Version: 1.0
+# Date: 2026-02-15
+
+# Core Testing Framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-html==4.1.1
+pytest-xdist==3.5.0  # Parallel test execution
+pytest-timeout==2.2.0
+pytest-mock==3.12.0
+
+# E2E Testing with Playwright
+playwright==1.40.0
+pytest-playwright==0.4.3
+
+# HTTP Client for API Testing
+requests==2.31.0
+httpx==0.25.2
+
+# Data Validation
+pydantic==2.5.2
+
+# Utilities
+python-dateutil==2.8.2
+faker==20.1.0  # Generate fake test data
+
+# Logging and Reporting
+colorlog==6.8.0
+pytest-json-report==1.5.0
+
+# Performance Testing
+locust==2.19.1  # Optional: for load testing
+
+# Code Coverage
+coverage[toml]==7.3.3
+
+# Linting and Formatting (for CI/CD)
+pylint==3.0.3
+black==23.12.1
+flake8==6.1.0
+mypy==1.7.1
+
+# Environment Management
+python-dotenv==1.0.0
+
+# Database Testing
+psycopg2-binary==2.9.9  # PostgreSQL adapter
+
+# Kafka Testing (optional, for direct Kafka access)
+kafka-python==2.0.2
+
+# Dapr SDK (optional, for advanced Dapr testing)
+dapr==1.12.0
+
+# Mocking and Fixtures
+responses==0.24.1  # Mock HTTP responses
+freezegun==1.4.0  # Mock datetime
+
+# Assertion Helpers
+assertpy==1.1
+
+# Test Data Generation
+factory-boy==3.3.0
+
+# Retry Logic for Flaky Tests
+pytest-rerunfailures==12.0
+
+# Parallel Execution
+pytest-parallel==0.1.1
+
+# Browser Automation (alternative to Playwright)
+selenium==4.16.0  # Optional
+
+# API Schema Validation
+jsonschema==4.20.0
+
+# Performance Monitoring
+pytest-benchmark==4.0.0
+
+# Test Reporting
+allure-pytest==2.13.2  # Optional: Allure reporting

@@ -8,6 +8,8 @@ export interface User {
   updated_at: string;
 }
 
+export type PriorityLevel = 'low' | 'medium' | 'high' | 'urgent';
+
 export interface Task {
   id: number;
   user_id: string;
@@ -16,6 +18,14 @@ export interface Task {
   completed: boolean;
   created_at: string;
   updated_at: string;
+  // Phase 5 fields
+  priority: PriorityLevel;
+  tags: string[];
+  due_date?: string;
+  reminder_time?: string;
+  recurrence_pattern?: string;
+  recurrence_end_date?: string;
+  parent_task_id?: number;
 }
 
 export interface Message {

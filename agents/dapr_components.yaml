@@ -1,0 +1,85 @@
+# Dapr Components Configuration for Kafka Integration
+# Task: T5.3.1 - Implements Dapr components
+# Spec Reference: phase5-spec.md Section 4.3 (Dapr Components)
+# Constitution: constitution.md v5.0
+
+# Kafka Pub/Sub Component
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub-kafka
+spec:
+  type: pubsub.kafka
+  version: v1
+  metadata:
+  # Kafka broker connection
+  - name: brokers
+    value: "localhost:9092"  # In production, this would be the Kafka broker addresses
+  - name: consumerGroup
+    value: "todo-app-consumer"  # All Dapr apps in same consumer group will load balance messages
+  - name: clientID
+    value: "todo-app"
+  - name: authType
+    value: "none"  # In production, use proper authentication (cert, SASL, etc.)
+  - name: maxMessageBytes
+    value: 1048576
+  - name: consumeRetryEnabled
+    value: "true"
+  - name: publishRetryEnabled
+    value: "true"
+
+# PostgreSQL State Store
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore-postgresql
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+  - name: connectionString
+    value: "host=localhost port=5432 user=postgres password=password dbname=todoapp sslmode=disable"  # In prod: get from Dapr secrets
+  - name: actorStateStore
+    value: "true"
+  - name: concurrency
+    value: "first-write"
+
+# Kubernetes Secret Store (for retrieving DB creds, API keys)
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: secretstore-kubernetes
+spec:
+  type: secretstores.kubernetes
+  version: v1
+  metadata: []
+
+# Dapr Jobs Component - For scheduling reminders using Dapr Jobs API
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: jobs-scheduler
+spec:
+  type: jobs.postgresql
+  version: v1
+  metadata:
+  - name: connectionString
+    value: "host=localhost port=5432 user=postgres password=password dbname=todoapp sslmode=disable"  # Reference from secret store
+  - name: maxActiveJobs
+    value: "100"
+  - name: workerCount
+    value: "5"
+  - name: scheduleCleanupInterval
+    value: "24h"
+---
+# Input Bindings for Cron Jobs
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: bindings-cron
+spec:
+  type: bindings.cron
+  version: v1
+  metadata:
+  - name: schedule
+    value: "*/30 * * * * *"  # Every 30 seconds for development

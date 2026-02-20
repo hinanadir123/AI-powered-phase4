@@ -1,0 +1,577 @@
+name: Deploy to Oracle OKE - CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  OCI_REGION: ${{ secrets.OCI_REGION }}
+  OCI_TENANCY: ${{ secrets.OCI_TENANCY_NAMESPACE }}
+  OCI_USER: ${{ secrets.OCI_USER_EMAIL }}
+  OCI_REGION_KEY: ${{ secrets.OCI_REGION_KEY }}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: backend
+            dockerfile: backend/Dockerfile
+            context: .
+            ports: "8000:8000"
+          - service: frontend
+            dockerfile: frontend/Dockerfile
+            context: .
+            ports: "3000:3000"
+          - service: worker
+            dockerfile: backend/Dockerfile.worker
+            context: .
+            ports: "8001:8001"
+
+    steps:
+    # Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Setup Python (for backend testing)
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    # Setup Node.js (for frontend testing)
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    # Run linting for backend
+    - name: Run backend linters
+      if: matrix.service == 'backend'
+      run: |
+        pip install flake8 black mypy
+        cd backend
+        flake8 .
+        black --check .
+        mypy . --config-file=setup.cfg 2>/dev/null || true
+
+    # Run linting for frontend
+    - name: Run frontend linters
+      if: matrix.service == 'frontend'
+      run: |
+        cd frontend
+        npm ci
+        npm run lint || true
+        npm run format:check || true
+
+    # Install dependencies and run backend tests
+    - name: Run backend tests
+      if: matrix.service == 'backend'
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        python -m pytest --cov=backend --cov-report=xml
+
+    # Install dependencies and run frontend tests
+    - name: Run frontend tests
+      if: matrix.service == 'frontend'
+      run: |
+        cd frontend
+        npm ci
+        npm test -- --coverage --ci --reporters=default --reporters=jest-junit
+        npm run build
+
+    # Build Docker image
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-${{ matrix.service }}:${{ github.sha }} \
+          -f ${{ matrix.dockerfile }} ${{ matrix.context }}
+
+    # Run Docker image with mocked dependencies for integration test
+    - name: Run integration tests
+      run: |
+        # Only run integration tests for backend as it connects to external services
+        if [ "${{ matrix.service }}" = "backend" ]; then
+          # Start dependencies using docker-compose or mock services
+          docker network create test-network || true
+          docker run -d --name test-db --network test-network postgres:13
+          docker run -d --name test-kafka --network test-network bitnami/kafka:latest
+
+          # Wait for services to be ready
+          sleep 30
+
+          # Run backend with test env
+          docker run --network test-network -e DATABASE_URL=postgresql://postgres@test-db:5432/test \
+            -e KAFKA_BROKERS=test-kafka:9092 \
+            ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-${{ matrix.service }}:${{ github.sha }}
+
+          # Cleanup
+          docker stop test-db test-kafka
+          docker rm test-db test-kafka
+        fi
+
+  test-e2e:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      kafka:
+        image: bitnami/kafka:latest
+        env:
+          KAFKA_CFG_NODE_ID: 0
+          KAFKA_CFG_PROCESS_ROLES: controller,broker
+          KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+          KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+          KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+          KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+          KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+          KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'true'
+        options: >-
+          --health-cmd "kafka-broker-api-versions --bootstrap-server localhost:9092"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install and run E2E tests
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        export DATABASE_URL=postgresql://postgres:testpass@localhost:5432/testdb
+        export KAFKA_BROKERS=localhost:9092
+        python -m pytest tests/e2e/ -v
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, test-e2e]
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup OCI CLI
+      uses: oracle-actions/setup-oci-cli@v1.2.0
+      with:
+        oci-username: ${{ secrets.OCI_USER }}
+        oci-tenancy-id: ${{ secrets.OCI_TENANCY_OCID }}
+        oci-user-id: ${{ secrets.OCI_USER_OCID }}
+        oci-fingerprint: ${{ secrets.OCI_KEY_FINGERPRINT }}
+        oci-private-key: ${{ secrets.OCI_PRIVATE_KEY }}
+        oci-region: ${{ secrets.OCI_REGION_KEY }}
+
+    - name: Login to Oracle Container Registry
+      run: |
+        echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCI_REGION_KEY }}.ocir.io -u "${{ secrets.OCI_TENANCY_NAMESPACE }}/oracleidentitycloudservice/${{ secrets.OCI_USER_EMAIL }}" --password-stdin
+
+    - name: Build and push Docker images
+      run: |
+        docker build -t ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-backend:${{ github.sha }} -f backend/Dockerfile .
+        docker build -t ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-backend:latest -f backend/Dockerfile .
+        docker push ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-backend:${{ github.sha }}
+        docker push ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-backend:latest
+
+        docker build -t ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-frontend:${{ github.sha }} -f frontend/Dockerfile .
+        docker build -t ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-frontend:latest -f frontend/Dockerfile .
+        docker push ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-frontend:${{ github.sha }}
+        docker push ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-frontend:latest
+
+        docker build -t ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-worker:${{ github.sha }} -f backend/Dockerfile.worker .
+        docker build -t ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-worker:latest -f backend/Dockerfile.worker .
+        docker push ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-worker:${{ github.sha }}
+        docker push ${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-worker:latest
+
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.12.0
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: Configure Kubernetes context from OCI
+      run: |
+        oci ce cluster create-kubeconfig --cluster-id ${{ secrets.OCI_CLUSTER_ID }} --file $HOME/.kube/config --region ${{ secrets.OCI_REGION_KEY }} --token-version 2.0.0
+
+    - name: Create pull secret
+      run: |
+        kubectl delete secret ocir-secret --ignore-not-found
+        kubectl create secret docker-registry ocir-secret \
+          --docker-server=${{ secrets.OCI_REGION_KEY }}.ocir.io \
+          --docker-username='${{ secrets.OCI_TENANCY_NAMESPACE }}/oracleidentitycloudservice/${{ secrets.OCI_USER_EMAIL }}' \
+          --docker-password='${{ secrets.OCI_AUTH_TOKEN }}' \
+          --docker-email='${{ secrets.OCI_USER_EMAIL }}'
+
+    - name: Deploy to staging
+      run: |
+        # Deploy backend
+        helm upgrade --install todo-backend-staging charts/backend/ \
+          --set image.repository=${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-backend \
+          --set image.tag=${{ github.sha }} \
+          --set image.pullPolicy=Always \
+          --set imagePullSecrets={ocir-secret} \
+          --set 'env[0].name=DATABASE_URL' \
+          --set 'env[0].valueFrom.secretKeyRef.name=postgres-secrets' \
+          --set 'env[0].valueFrom.secretKeyRef.key=connection-string' \
+          --set 'env[1].name=KAFKA_BROKERS' \
+          --set 'env[1].valueFrom.secretKeyRef.name=kafka-secrets' \
+          --set 'env[1].valueFrom.secretKeyRef.key=brokers' \
+          --set dapr.appId=todo-backend-staging \
+          --namespace=staging \
+          --create-namespace \
+          --timeout=10m
+
+        # Deploy frontend
+        helm upgrade --install todo-frontend-staging charts/frontend/ \
+          --set image.repository=${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-frontend \
+          --set image.tag=${{ github.sha }} \
+          --set image.pullPolicy=Always \
+          --set imagePullSecrets={ocir-secret} \
+          --set dapr.appId=todo-frontend-staging \
+          --namespace=staging \
+          --timeout=10m
+
+        # Deploy worker
+        helm upgrade --install reminder-worker-staging charts/reminder-worker/ \
+          --set image.repository=${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-worker \
+          --set image.tag=${{ github.sha }} \
+          --set image.pullPolicy=Always \
+          --set imagePullSecrets={ocir-secret} \
+          --set 'env[0].name=DATABASE_URL' \
+          --set 'env[0].valueFrom.secretKeyRef.name=postgres-secrets' \
+          --set 'env[0].valueFrom.secretKeyRef.key=connection-string' \
+          --set 'env[1].name=KAFKA_BROKERS' \
+          --set 'env[1].valueFrom.secretKeyRef.name=kafka-secrets' \
+          --set 'env[1].valueFrom.secretKeyRef.key=brokers' \
+          --set dapr.appId=reminder-worker-staging \
+          --namespace=staging \
+          --timeout=10m
+
+    - name: Run smoke tests
+      run: |
+        # Wait for deployment to be ready
+        kubectl wait --for=condition=ready pod -l app=todo-backend-staging -n staging --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=todo-frontend-staging -n staging --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=reminder-worker-staging -n staging --timeout=300s
+
+        # Verify pods are running with Dapr sidecars
+        BACKEND_READY=$(kubectl get pods -n staging -l app=todo-backend-staging -o jsonpath='{.items[0].status.containerStatuses[0].ready}{"\n"}')
+        FRONTEND_READY=$(kubectl get pods -n staging -l app=todo-frontend-staging -o jsonpath='{.items[0].status.containerStatuses[0].ready}{"\n"}')
+        WORKER_READY=$(kubectl get pods -n staging -l app=reminder-worker-staging -o jsonpath='{.items[0].status.containerStatuses[0].ready}{"\n"}')
+
+        if [[ $BACKEND_READY != "true" || $FRONTEND_READY != "true" || $WORKER_READY != "true" ]]; then
+          echo "At least one pod is not ready. Checking logs..."
+          kubectl logs -n staging -l app=todo-backend-staging
+          kubectl logs -n staging -l app=todo-frontend-staging
+          kubectl logs -n staging -l app=reminder-worker-staging
+          exit 1
+        fi
+
+        # Verify Dapr sidecars are healthy
+        BACKEND_DAPR_READY=$(kubectl get pods -n staging -l app=todo-backend-staging -o jsonpath='{.items[0].status.containerStatuses[1].ready}{"\n"}')
+        FRONTEND_DAPR_READY=$(kubectl get pods -n staging -l app=todo-frontend-staging -o jsonpath='{.items[0].status.containerStatuses[1].ready}{"\n"}')
+        WORKER_DAPR_READY=$(kubectl get pods -n staging -l app=reminder-worker-staging -o jsonpath='{.items[0].status.containerStatuses[1].ready}{"\n"}')
+
+        if [[ $BACKEND_DAPR_READY != "true" || $FRONTEND_DAPR_READY != "true" || $WORKER_DAPR_READY != "true" ]]; then
+          echo "At least one Dapr sidecar is not healthy"
+          kubectl logs -n staging -l app=todo-backend-staging -c daprd
+          kubectl logs -n staging -l app=todo-frontend-staging -c daprd
+          kubectl logs -n staging -l app=reminder-worker-staging -c daprd
+          exit 1
+        fi
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    concurrency: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup OCI CLI
+      uses: oracle-actions/setup-oci-cli@v1.2.0
+      with:
+        oci-username: ${{ secrets.OCI_USER }}
+        oci-tenancy-id: ${{ secrets.OCI_TENANCY_OCID }}
+        oci-user-id: ${{ secrets.OCI_USER_OCID }}
+        oci-fingerprint: ${{ secrets.OCI_KEY_FINGERPRINT }}
+        oci-private-key: ${{ secrets.OCI_PRIVATE_KEY }}
+        oci-region: ${{ secrets.OCI_REGION_KEY }}
+
+    - name: Login to Oracle Container Registry
+      run: |
+        echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCI_REGION_KEY }}.ocir.io -u "${{ secrets.OCI_TENANCY_NAMESPACE }}/oracleidentitycloudservice/${{ secrets.OCI_USER_EMAIL }}" --password-stdin
+
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.12.0
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: Configure Kubernetes context from OCI
+      run: |
+        oci ce cluster create-kubeconfig --cluster-id ${{ secrets.OCI_CLUSTER_ID }} --file $HOME/.kube/config --region ${{ secrets.OCI_REGION_KEY }} --token-version 2.0.0
+
+    - name: Deploy to production
+      run: |
+        # Create pull secret
+        kubectl delete secret ocir-secret --ignore-not-found
+        kubectl create secret docker-registry ocir-secret \
+          --docker-server=${{ secrets.OCI_REGION_KEY }}.ocir.io \
+          --docker-username='${{ secrets.OCI_TENANCY_NAMESPACE }}/oracleidentitycloudservice/${{ secrets.OCI_USER_EMAIL }}' \
+          --docker-password='${{ secrets.OCI_AUTH_TOKEN }}' \
+          --docker-email='${{ secrets.OCI_USER_EMAIL }}'
+
+        # Deploy backend
+        helm upgrade --install todo-backend charts/backend/ \
+          --set image.repository=${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-backend \
+          --set image.tag=${{ github.sha }} \
+          --set image.pullPolicy=Always \
+          --set imagePullSecrets={ocir-secret} \
+          --set 'env[0].name=DATABASE_URL' \
+          --set 'env[0].valueFrom.secretKeyRef.name=postgres-secrets' \
+          --set 'env[0].valueFrom.secretKeyRef.key=connection-string' \
+          --set 'env[1].name=KAFKA_BROKERS' \
+          --set 'env[1].valueFrom.secretKeyRef.name=kafka-secrets' \
+          --set 'env[1].valueFrom.secretKeyRef.key=brokers' \
+          --set dapr.appId=todo-backend \
+          --set replicaCount=2 \
+          --set resources.requests.cpu=100m \
+          --set resources.requests.memory=128Mi \
+          --set resources.limits.cpu=500m \
+          --set resources.limits.memory=512Mi \
+          --namespace=production \
+          --create-namespace \
+          --timeout=10m
+
+        # Deploy frontend
+        helm upgrade --install todo-frontend charts/frontend/ \
+          --set image.repository=${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-frontend \
+          --set image.tag=${{ github.sha }} \
+          --set image.pullPolicy=Always \
+          --set imagePullSecrets={ocir-secret} \
+          --set dapr.appId=todo-frontend \
+          --set replicaCount=2 \
+          --set resources.requests.cpu=50m \
+          --set resources.requests.memory=64Mi \
+          --set resources.limits.cpu=200m \
+          --set resources.limits.memory=256Mi \
+          --namespace=production \
+          --timeout=10m
+
+        # Deploy worker
+        helm upgrade --install reminder-worker charts/reminder-worker/ \
+          --set image.repository=${{ secrets.OCI_REGION_KEY }}.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/todo-worker \
+          --set image.tag=${{ github.sha }} \
+          --set image.pullPolicy=Always \
+          --set imagePullSecrets={ocir-secret} \
+          --set 'env[0].name=DATABASE_URL' \
+          --set 'env[0].valueFrom.secretKeyRef.name=postgres-secrets' \
+          --set 'env[0].valueFrom.secretKeyRef.key=connection-string' \
+          --set 'env[1].name=KAFKA_BROKERS' \
+          --set 'env[1].valueFrom.secretKeyRef.name=kafka-secrets' \
+          --set 'env[1].valueFrom.secretKeyRef.key=brokers' \
+          --set dapr.appId=reminder-worker \
+          --set replicaCount=1 \
+          --set resources.requests.cpu=100m \
+          --set resources.requests.memory=128Mi \
+          --set resources.limits.cpu=500m \
+          --set resources.limits.memory=512Mi \
+          --namespace=production \
+          --timeout=10m
+
+        # Deploy monitoring stack
+        kubectl apply -f monitoring/monitoring-namespace.yaml
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        helm repo add grafana https://grafana.github.io/helm-charts
+        helm repo update
+
+        # Deploy prometheus
+        helm upgrade --install prometheus prometheus-community/prometheus \
+          --namespace monitoring \
+          --set alertmanager.persistentVolume.enabled=false \
+          --set pushgateway.persistentVolume.enabled=false \
+          --set server.persistentVolume.enabled=false \
+          --set server.service.type=LoadBalancer \
+          --timeout=10m
+
+        # Deploy grafana
+        helm upgrade --install grafana grafana/grafana \
+          --namespace monitoring \
+          --set adminPassword="${{ secrets.GRAFANA_ADMIN_PASSWORD }}" \
+          --set persistence.enabled=false \
+          --set service.type=LoadBalancer \
+          --timeout=10m
+
+        # Deploy loki and promtail for logging
+        helm upgrade --install loki grafana/loki-stack \
+          --namespace monitoring \
+          --set "loki.persistence.enabled=false" \
+          --set "promtail.enabled=true" \
+          --set "fluent-bit.enabled=false" \
+          --set "prometheus.enabled=false" \
+          --set "alertmanager.enabled=false" \
+          --set "grafana.enabled=false" \
+          --timeout=10m
+
+    - name: Verify production deployment
+      run: |
+        # Wait for deployment to be ready
+        kubectl wait --for=condition=ready pod -l app=todo-backend -n production --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=todo-frontend -n production --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=reminder-worker -n production --timeout=300s
+
+        # Check that monitoring components are running
+        kubectl wait --for=condition=ready pod -l app=kubernetes,component=apiserver -n monitoring --timeout=300s || true
+        kubectl wait --for=condition=ready pod -l app=grafana -n monitoring --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=loki -n monitoring --timeout=300s
+
+    - name: Validate health endpoints
+      run: |
+        # Get the external IP of the ingress controller
+        export INGRESS_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        echo "Ingress IP: $INGRESS_IP"
+
+        # Wait a bit for the ingress controller to get an IP
+        sleep 60
+
+        # Verify the health endpoint - this is critical for our application
+        if [ -z "$INGRESS_IP" ]; then
+          echo "Could not get ingress IP, checking for any errors in ingress controller"
+          kubectl get pods -n ingress-nginx
+          kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
+          exit 1
+        fi
+
+        # Test backend health endpoint
+        backend_health_status=$(curl -s -o /dev/null -w "%{http_code}" http://$INGRESS_IP/api/health)
+        echo "Backend health status: $backend_health_status"
+        if [ "$backend_health_status" -ne 200 ]; then
+          echo "Backend health check failed"
+          exit 1
+        fi
+
+        # Test frontend can communicate with backend
+        echo "Testing that application endpoints work"
+        # This would be expanded based on actual endpoints
+        curl -s http://$INGRESS_IP/api/tasks || echo "Warning: Tasks endpoint not available yet"
+
+        echo "Health check completed successfully!"
+
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        echo "Deployment failed, executing rollback procedures..."
+        # Rollback commands would go here
+        # helm rollback todo-backend production 1
+        # kubectl rollout undo deployment/todo-backend -n production
+
+  notification:
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    steps:
+    - name: Notify Slack
+      if: needs.deploy-production.result == 'success' || needs.deploy-production.result == 'failure'
+      run: |
+        if [ "${{ needs.deploy-production.result }}" == "success" ]; then
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"✅ Production deployment successful!","blocks":[{"type":"section","text":{"type":"mrkdwn","text":"✅ *Production Deployment Successful*\nDeployment of ${{ github.sha }} completed successfully to production."}}]}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+        else
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"❌ Deployment Failed","blocks":[{"type":"section","text":{"type":"mrkdwn","text":"❌ *Deployment Failed*\nDeployment to production failed. Please check the GitHub Actions logs for details. \nSha: ${{ github.sha }}\nFailed Job: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nAuthor: ${{ github.actor }}"}}]}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+        fi
+
+    - name: Notify Discord
+      if: needs.deploy-production.result == 'success' || needs.deploy-production.result == 'failure'
+      run: |
+        if [ "${{ needs.deploy-production.result }}" == "success" ]; then
+          curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
+            -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "✅ Production Deployment Successful",
+                "description": "Successfully deployed commit ${{ github.sha }} to production",
+                "color": 5763719,
+                "fields": [
+                  {
+                    "name": "Author",
+                    "value": "${{ github.actor }}",
+                    "inline": true
+                  },
+                  {
+                    "name": "Repository",
+                    "value": "${{ github.repository }}",
+                    "inline": true
+                  }
+                ],
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")'"
+              }]
+            }'
+        else
+          curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
+            -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "❌ Deployment Failed",
+                "description": "Deployment to production failed. Check logs for details.",
+                "color": 15158332,
+                "fields": [
+                  {
+                    "name": "Author",
+                    "value": "${{ github.actor }}",
+                    "inline": true
+                  },
+                  {
+                    "name": "Commit",
+                    "value": "${{ github.sha }}",
+                    "inline": true
+                  }
+                ],
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")'"
+              }]
+            }'
+        fi
